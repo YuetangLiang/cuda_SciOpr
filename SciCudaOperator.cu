@@ -104,8 +104,8 @@ class MaskOperator : public SciCudaOperator {
         dstAttrs.vprFlag           = false;
         dstAttrs.bufType           = NvSciBufType_Image;
 
-        srcBuf.reserve(MAX_NUM_PACKETS);
-        dstBuf.reserve(MAX_NUM_PACKETS);
+        srcBufOprs.reserve(MAX_NUM_PACKETS);
+        dstBufOprs.reserve(MAX_NUM_PACKETS);
         checkRuntime(cudaStreamCreate(&stream));
 
         d_img_.resize(img_size_);
@@ -129,19 +129,19 @@ class MaskOperator : public SciCudaOperator {
 
         cudaArray_t src_cudaArray[MAX_PLANE_COUNT];
         cudaArray_t dst_cudaArray[MAX_PLANE_COUNT];
-        auto cudaStatus = cudaGetMipmappedArrayLevel(&src_cudaArray[0], src->cudaMem.plane[0].mipmappedArray, 0U);
+        auto cudaStatus = cudaGetMipmappedArrayLevel(&src_cudaArray[0], srcBufOpr->cudaMem.plane[0].mipmappedArray, 0U);
         CHK_CUDASTATUS_AND_RETURN(cudaStatus, "cudaGetMipmappedArrayLevel src_0");
-        cudaStatus = cudaGetMipmappedArrayLevel(&src_cudaArray[1], src->cudaMem.plane[1].mipmappedArray, 0U);
+        cudaStatus = cudaGetMipmappedArrayLevel(&src_cudaArray[1], srcBufOpr->cudaMem.plane[1].mipmappedArray, 0U);
         CHK_CUDASTATUS_AND_RETURN(cudaStatus, "cudaGetMipmappedArrayLevel src_1");
 
 
-        cudaStatus = cudaGetMipmappedArrayLevel(&dst_cudaArray[0], dst->cudaMem.plane[0].mipmappedArray, 0U);
+        cudaStatus = cudaGetMipmappedArrayLevel(&dst_cudaArray[0], dstBufOpr->cudaMem.plane[0].mipmappedArray, 0U);
         CHK_CUDASTATUS_AND_RETURN(cudaStatus, "cudaGetMipmappedArrayLevel dst_0");
-        cudaStatus = cudaGetMipmappedArrayLevel(&dst_cudaArray[1], dst->cudaMem.plane[1].mipmappedArray, 0U);
+        cudaStatus = cudaGetMipmappedArrayLevel(&dst_cudaArray[1], dstBufOpr->cudaMem.plane[1].mipmappedArray, 0U);
         CHK_CUDASTATUS_AND_RETURN(cudaStatus, "cudaGetMipmappedArrayLevel dst_1");
 
-        width_ = (size_t)dst->cudaMem.attrs.planeWidths[0];
-        height_ = (size_t)dst->cudaMem.attrs.planeHeights[0];
+        width_ = (size_t)dstBufOpr->cudaMem.attrs.planeWidths[0];
+        height_ = (size_t)dstBufOpr->cudaMem.attrs.planeHeights[0];
 
         cudaStatus = cudaMemcpy2DArrayToArray(*(&dst_cudaArray[0]), 0, 0,
                                               *((cudaArray_const_t *)&src_cudaArray[0]), 0, 0,
@@ -156,50 +156,51 @@ class MaskOperator : public SciCudaOperator {
                                               height_ / 2,
                                               cudaMemcpyDeviceToDevice);
         CHK_CUDASTATUS_AND_RETURN(cudaStatus, "cudaMemcpy2D for plane 1");
+        
+        auto mmap_array = [&](cudaArray_t arr) -> cudaSurfaceObject_t {
+            cudaResourceDesc d;
+            memset(&d, 0, sizeof(cudaResourceDesc));
+            d.resType = cudaResourceTypeArray;
+            d.res.array.array =  arr;
+            cudaSurfaceObject_t ptr;
+            cudaStatus = cudaCreateSurfaceObject(&ptr, &d);
+            return ptr;
+        };
 
-        cudaSurfaceObject_t dst_y;
-        cudaResourceDesc surface_desc_y;
-        memset(&surface_desc_y, 0, sizeof(cudaResourceDesc));
-        surface_desc_y.resType = cudaResourceTypeArray;
-        surface_desc_y.res.array.array =  *((cudaArray_t *)&dst_cudaArray[0]);
-        cudaStatus = cudaCreateSurfaceObject(&dst_y, &surface_desc_y);
+        cudaSurfaceObject_t dst_y = mmap_array(dst_cudaArray[0]);
         CHK_CUDASTATUS_AND_RETURN(cudaStatus, "cudaCreateSurfaceObject surface_y");
 
-        cudaSurfaceObject_t dst_uv;
-        cudaResourceDesc surface_desc_uv;
-        memset(&surface_desc_uv, 0, sizeof(cudaResourceDesc));
-        surface_desc_uv.resType = cudaResourceTypeArray;
-        surface_desc_uv.res.array.array =  *((cudaArray_t *)&dst_cudaArray[1]);
-        cudaStatus = cudaCreateSurfaceObject(&dst_uv, &surface_desc_uv);
+        cudaSurfaceObject_t dst_uv = mmap_array(dst_cudaArray[1]);
         CHK_CUDASTATUS_AND_RETURN(cudaStatus, "cudaCreateSurfaceObject surface_uv");
 
-        // TODO
         yuv420sp_mask_new(dst_y, dst_uv, width_, height_, boxes_num_, &d_boxes_[0], stream);
 
         idx += 1;
         cudaStreamSynchronize(stream);
 
+        cudaDestroySurfaceObject(dst_y);
+        cudaDestroySurfaceObject(dst_uv);
         return 0;
     }
 
     virtual int Compose(NvSciBufObj srcObj, NvSciBufObj dstObj = NULL) override {
-        src = &srcBuf[(uint64_t)srcObj];
-        dst = &dstBuf[(uint64_t)dstObj];
+        srcBufOpr = &srcBufOprs[(uint64_t)srcObj];
+        dstBufOpr = &dstBufOprs[(uint64_t)dstObj];
 
-        if (src->obj == NULL) {
-            src->obj = srcObj;
-            src->mmap_cuda();
+        if (srcBufOpr->obj == NULL) {
+            srcBufOpr->obj = srcObj;
+            srcBufOpr->mmap_cuda();
         }
 
-        if (dst->obj == NULL) {
+        if (dstBufOpr->obj == NULL) {
             if (dstObj) {
-                dst->obj = dstObj;
+                dstBufOpr->obj = dstObj;
             } else {
                 // new dst.obj
-                dst->alloc(&dstAttrs);
+                dstBufOpr->alloc(&dstAttrs);
             }
 
-            dst->mmap_cuda();
+            dstBufOpr->mmap_cuda();
         }
 
         Compose();

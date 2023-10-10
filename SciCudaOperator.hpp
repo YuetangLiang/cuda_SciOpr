@@ -356,7 +356,7 @@ class SurfaceAttrs
 
 
 /* Structure holding allocated objects related to an NvSciBufObj */
-class BufObj
+class BufOperator
 {
  public:
 
@@ -509,10 +509,10 @@ class SciCudaOperator {
     virtual int Compose() = 0;
     virtual int Compose(NvSciBufObj srcObj, NvSciBufObj dstObj = NULL) = 0;
 
-    std::unordered_map<uint64_t, BufObj> srcBuf;
-    std::unordered_map<uint64_t, BufObj> dstBuf;
-    BufObj *src = NULL;
-    BufObj *dst = NULL;
+    std::unordered_map<uint64_t, BufOperator> srcBufOprs;
+    std::unordered_map<uint64_t, BufOperator> dstBufOprs;
+    BufOperator *srcBufOpr = NULL;
+    BufOperator *dstBufOpr = NULL;
     SurfaceAttrs dstAttrs{};
     cudaStream_t stream;
 };
