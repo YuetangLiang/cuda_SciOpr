@@ -1,4 +1,7 @@
 # SciCudaOperator
+Our source code (including libraries starting with the v2.x versions, and all versions), and ALL source code will be licensed under the [Elastic License v2 (ELv2)](https://www.elastic.co/licensing/elastic-license).
+
+We chose ELv2 because of its permissiveness and simplicity. We're following the well-paved path of other great infrastructure projects like Elasticsearch and MongoDB that have implemented similar source code licenses to preserve their communities. Our community and customers still have no-charge and open access to use, modify, redistribute, and collaborate on the code. ELv2 also protects our continued investment in developing freely available libraries and developer tools by restricting cloud service providers from offering it as a service.
 
 ## sample
 ```cpp
